@@ -1,6 +1,5 @@
 <div align="center">
 
-```svg
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 220" fill="none">
   <defs>
     <linearGradient id="lineGlow" x1="0" y1="0" x2="1" y2="0">
@@ -129,7 +128,6 @@
     </circle>
   </g>
 </svg>
-```
 
 </div>
 
