@@ -216,18 +216,14 @@ export function Graph3D({
         }}
         linkWidth={(l) => {
           const link = l as GraphLink;
-          if (link.circular) return 1.8;
-          if (linkTouchesHover(link)) return 1;
-          return 0.4;
+          if (link.circular) return 2.2;
+          if (linkTouchesHover(link)) return 1.6;
+          return 0.9;
         }}
-        linkOpacity={0.4}
-        linkDirectionalParticles={(l) => {
-          const link = l as GraphLink;
-          if (link.circular) return 4;
-          return linkTouchesHover(link) ? 2 : 0;
-        }}
-        linkDirectionalParticleWidth={(l) => ((l as GraphLink).circular ? 2.2 : 1.4)}
-        linkDirectionalParticleSpeed={(l) => ((l as GraphLink).circular ? 0.012 : 0.006)}
+        linkOpacity={0.65}
+        linkDirectionalParticles={2}
+        linkDirectionalParticleWidth={1.6}
+        linkDirectionalParticleSpeed={0.008}
         linkDirectionalParticleColor={(l) => ((l as GraphLink).circular ? "#f0475c" : "#4fd1e8")}
         onNodeHover={(n) => {
           const node = n as GraphNode | null;

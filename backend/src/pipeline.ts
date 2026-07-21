@@ -18,13 +18,18 @@ const CLONE_TIMEOUT_MS = 20_000;
 const CLONE_SIZE_LIMIT_MB = 200;
 const ANALYSIS_TIMEOUT_MS = 45_000;
 const CACHE_DIR = join(tmpdir(), "mri-cache");
+const CACHE_VERSION = "v4";
 
 function repoFullName(url: string): string {
-  return url.replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "");
+  return url
+    .trim()
+    .replace(/^https?:\/\/(?:www\.)?github\.com\//, "")
+    .replace(/\.git$/, "")
+    .replace(/\/$/, "");
 }
 
 function cacheKey(repoUrl: string): string {
-  return repoFullName(repoUrl).replace(/\//g, "__");
+  return `${CACHE_VERSION}__${repoFullName(repoUrl).replace(/\//g, "__")}`;
 }
 
 function getCached(repoUrl: string): ScanResult | null {
@@ -94,6 +99,18 @@ function enumerateFiles(root: string): string[] {
 
   walk(root);
   return results;
+}
+
+function clusterForPath(relPath: string): string {
+  const parts = relPath.split("/");
+  if (parts.length <= 1) return "root";
+
+  const [top, second, third] = parts;
+  if (["packages", "apps", "examples", "playground"].includes(top) && second) {
+    return third ? `${top}/${second}/${third}` : `${top}/${second}`;
+  }
+
+  return top;
 }
 
 // Estimate repo size before clone by checking HEAD request (best-effort)
@@ -177,7 +194,7 @@ export async function runPipeline(
   let madgeResult: Awaited<ReturnType<typeof madge>>;
   try {
     madgeResult = await madge(tempDir, {
-      extensions: [".ts", ".tsx", ".js", ".jsx"],
+      fileExtensions: ["ts", "tsx", "js", "jsx"],
       excludeRegExp: [/node_modules/, /dist/, /build/, /\.git/],
       detectiveOptions: {
         ts: {
@@ -217,7 +234,7 @@ export async function runPipeline(
     nodeIdByPath.set(relPath, nodeId);
     pathToRel.set(modulePath, relPath);
 
-    const cluster = dirname(relPath).split("/")[0] || "root";
+    const cluster = clusterForPath(relPath);
 
     nodes.push({
       id: nodeId,
@@ -386,9 +403,10 @@ export async function runPipeline(
   debt.sort((a, b) => b.severity - a.severity);
   const topDebt = debt.slice(0, 50);
 
-  // Stage 6: Aggregate nodes if file count > 60
-  // We keep per-file data in debt + readonly lists, but aggregate for the graph view
-  const nodesForGraph = nodes.length > 60 ? aggregateNodes(nodes) : nodes;
+  // Stage 6: Aggregate nodes if file count > 300
+  const shouldAggregate = nodes.length > 300;
+  const nodesForGraph = shouldAggregate ? aggregateNodes(nodes) : nodes;
+  const edgesForGraph = shouldAggregate ? aggregateEdges(edges, nodeIdByPath, nodes) : edges;
   const fileCountForDisplay = nodes.length;
 
   // Stage 7: Compute health index
@@ -428,7 +446,7 @@ export async function runPipeline(
     healthGrade,
     diagnosis: readout,
     nodes: nodesForGraph,
-    edges,
+    edges: edgesForGraph,
     debt: topDebt,
   };
 
@@ -508,7 +526,7 @@ function computeSeverity(exportName: string, filePath: string): number {
   return Math.min(100, severity + Math.round(Math.random() * 20));
 }
 
-// Aggregate nodes by cluster when file count > 60
+// Aggregate nodes by cluster when file count > 300
 function aggregateNodes(nodes: ScanNode[]): ScanNode[] {
   const clusterMap = new Map<string, ScanNode[]>();
   for (const node of nodes) {
@@ -540,6 +558,39 @@ function aggregateNodes(nodes: ScanNode[]): ScanNode[] {
   }
 
   return aggregated;
+}
+
+// When nodes are aggregated to cluster level, map edges to cluster IDs as well.
+// For each original edge, find the cluster of source and target, then create a cluster-level edge.
+function aggregateEdges(
+  edges: ScanEdge[],
+  nodeIdByPath: Map<string, string>,
+  nodes: ScanNode[],
+): ScanEdge[] {
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const clusterEdges = new Set<string>();
+
+  const result: ScanEdge[] = [];
+  for (const edge of edges) {
+    const srcNode = nodeById.get(edge.source);
+    const tgtNode = nodeById.get(edge.target);
+    if (!srcNode || !tgtNode) continue;
+
+    const srcCluster = srcNode.cluster;
+    const tgtCluster = tgtNode.cluster;
+
+    const key = `${srcCluster}->${tgtCluster}`;
+    if (clusterEdges.has(key)) continue;
+    clusterEdges.add(key);
+
+    result.push({
+      source: `cluster-${srcCluster}`,
+      target: `cluster-${tgtCluster}`,
+      circular: edge.circular,
+    });
+  }
+
+  return result;
 }
 
 // Template-based diagnosis readout — deterministic, not AI
@@ -645,20 +696,23 @@ async function getDirSizeMB(dir: string): Promise<number> {
   return totalSize / (1024 * 1024);
 }
 
-// Count branching keywords as a reliable cyclomatic complexity proxy.
-// Base = 1 (straight-line path), plus 1 per branch (if/else if/for/while/case/catch/?/&&/||).
-function estimateCyclomaticComplexity(source: string, lines: number): number {
+// Per McCabe: cyclomatic complexity = 1 + number of decision points.
+// Strips comments and string literals first so logical operators inside them
+// don't inflate the count.  Each if/for/while/catch/case/ternary/&&/|| is a
+// decision point.
+function estimateCyclomaticComplexity(source: string, _lines: number): number {
+  const cleaned = source
+    .replace(/\/\/.*/g, "")                       // single-line comments
+    .replace(/\/\*[\s\S]*?\*\//g, "")             // multi-line comments
+    .replace(/'(?:[^'\\]|\\.)*'/g, "")            // single-quoted strings
+    .replace(/"(?:[^"\\]|\\.)*"/g, "")            // double-quoted strings
+    .replace(/`(?:[^`\\]|\\.)*`/g, "");           // template literals
+
   let complexity = 1;
-  complexity += (source.match(/\bif\s*\(/g) || []).length;
-  complexity += (source.match(/\belse\s+if\b/g) || []).length;
-  complexity += (source.match(/\bswitch\s*\(/g) || []).length;
-  complexity += (source.match(/\bcase\s+/g) || []).length;
-  complexity += (source.match(/\bfor\s*\(/g) || []).length;
-  complexity += (source.match(/\bwhile\s*\(/g) || []).length;
-  complexity += (source.match(/\bcatch\s*\(/g) || []).length;
-  complexity += (source.match(/\?\s*\w+\s*:/g) || []).length;
-  complexity += (source.match(/\|\|/g) || []).length;
-  complexity += (source.match(/&&/g) || []).length;
-  // Scale down to avoid inflated numbers: every 3 branch points ≈ 1 unit of complexity
-  return Math.max(1, Math.round(complexity / 3));
+  complexity += (cleaned.match(/\b(?:if|for|while|catch)\s*\(/g) || []).length;
+  complexity += (cleaned.match(/\bcase\s+/g) || []).length;
+  complexity += (cleaned.match(/\?\s*\S/g) || []).length;
+  complexity += (cleaned.match(/&&/g) || []).length;
+  complexity += (cleaned.match(/\|\|/g) || []).length;
+  return Math.max(1, complexity);
 }

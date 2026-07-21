@@ -1,1 +1,6 @@
 node_modules
+dist/
+backend/dist/
+backend-server.log
+backend-server.err.log
+backend-server.out.log

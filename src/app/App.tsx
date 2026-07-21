@@ -24,6 +24,7 @@ import {
 import { createPortal } from "react-dom";
 import { Graph3D, type GraphLink } from "./components/graph-3d";
 import { enrichAll, type EnrichedNode } from "./lib/analysis";
+import demoFixture from "../imports/pasted_text/software-mri-fixture.json";
 
 type Layer = "Structure" | "Complexity" | "Debt";
 type ScanState = "ready" | "scanning" | "results" | "error";
@@ -78,6 +79,15 @@ export default function App() {
   const abortRef = useRef<AbortController | null>(null);
 
   const scanData = scanResult;
+
+  // Auto-load demo fixture on first mount so the page is never empty
+  useEffect(() => {
+    if (!scanResult) {
+      setScanResult(demoFixture as unknown as ScanResult);
+      setRepo("acme/telemetry-console");
+      setScan("results");
+    }
+  }, []);
 
   const enrichedNodes = useMemo(() => scanData ? enrichAll(scanData.nodes) : [], [scanData]);
   const graphLinks = useMemo(() => (scanData?.edges ?? []) as GraphLink[], [scanData]);
@@ -309,7 +319,7 @@ export default function App() {
           <div className="border-b border-[#232933] p-5"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><Activity size={15} className="text-[#f0475c]"/><h2 className="font-[Space_Grotesk] text-[15px] font-medium">Diagnosis</h2></div><span className="font-mono text-[10px] text-[#7c8a99]">v1.0</span></div><div className="mt-5 flex items-end justify-between"><div><p className="font-mono text-[10px] uppercase tracking-[.12em] text-[#7c8a99]">Health index</p><p className="mt-1 font-[Space_Grotesk] text-[46px] leading-none tracking-[-.06em]">{scanData.healthIndex}<span className="ml-1 text-[17px] text-[#7c8a99]">/100</span></p></div><div className="mb-1 flex size-14 items-center justify-center rounded-full border-2 border-[#f2a65a] font-mono text-[11px] text-[#f2a65a]">{scanData.healthGrade}</div></div><div className="mt-4 h-[3px] overflow-hidden bg-[#28313a]"><div className="h-full bg-[linear-gradient(90deg,#4fd1e8,#f2a65a,#f0475c)]" style={{width: `${scanData.healthIndex}%`}}/></div></div>
           <div className="p-5"><p className="font-mono text-[10px] uppercase tracking-[.14em] text-[#7c8a99]">Computed readout</p><p className="mt-2 text-[13px] leading-6 text-[#c5d0d7]">{scanData.diagnosis}</p><p className="mt-3 border-t border-[#232933] pt-3 text-[11px] leading-5 text-[#8b98a3]"><Flame size={11} className="mr-1 inline text-[#f2a65a]"/>{supportingReadout}</p></div>
           <div className="border-y border-[#232933] p-5"><div className="mb-3 flex items-center justify-between"><p className="font-mono text-[10px] uppercase tracking-[.14em] text-[#7c8a99]">Highest signal</p><button className="text-[#7c8a99] hover:text-white"><ChevronDown size={15}/></button></div><div className="space-y-3">{risks.map((risk, index) => <button key={risk.file} onClick={() => { setHoverNode(`src/${risk.file}`); setSelectedPath(risk.file); }} className={`group flex w-full items-start gap-3 text-left ${selectedPath === risk.file ? "opacity-100" : ""}`}><span className="mt-1 font-mono text-[10px] text-[#56636d]">0{index + 1}</span><span className="min-w-0 flex-1"><span className={`block truncate font-mono text-[10px] group-hover:text-[#4fd1e8] ${selectedPath === risk.file ? "text-[#4fd1e8]" : "text-[#d6e0e5]"}`}>{risk.file}</span><span className="mt-1 block text-[10px] text-[#788692]">{risk.note}</span></span><span className={`mt-1 size-2 rounded-full ${risk.tone}`}/></button>)}</div></div>
-          <div className="p-5"><button className="flex items-center gap-2 text-[12px] text-[#b5c1c9] transition hover:text-[#4fd1e8]"><Database size={14}/>Export analysis <ArrowUpRight size={13}/></button></div>
+          <div className="p-5"><button onClick={() => { if (!scanData) return; const blob = new Blob([JSON.stringify(scanData, null, 2)], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `${scanData.repo.replace(/[^a-zA-Z0-9]/g, "_")}_mri.json`; a.click(); URL.revokeObjectURL(url); }} className="flex items-center gap-2 text-[12px] text-[#b5c1c9] transition hover:text-[#4fd1e8]"><Database size={14}/>Export analysis <ArrowUpRight size={13}/></button></div>
         </aside>
       </div>}
 
