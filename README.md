@@ -106,12 +106,6 @@ Open `http://localhost:5173` in your browser. Paste a GitHub URL (e.g. `https://
 
 See [ATTRIBUTIONS.md](./ATTRIBUTIONS.md) for third-party license information.
 
-<br/>
-
 <div align="center">
-  <sub>
-    Built with React · Three.js · Express · TypeScript
-    <br/>
-    <code>STATIC ANALYSIS ONLY · DATA REMAINS LOCAL</code>
-  </sub>
+  <img src="assets/footer.svg" alt="Footer" width="800">
 </div>
