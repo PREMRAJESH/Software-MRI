@@ -1,0 +1,72 @@
+# Build Prompt: Demo Repo & Scan Result for Software MRI
+
+## Goal
+
+The live demo needs to run against a **real, public, analyzable GitHub repo** — not fully fake data — so judges trust the numbers on screen, but the repo must be chosen and (if needed) lightly seeded so the resulting scan is *visually compelling*: a healthy spread across all three signal colors, a clear "story" in the Diagnosis panel, and enough findings to make the Debt layer feel substantial without being overwhelming.
+
+Two outputs are needed: (1) the actual analyzer running against a real repo, and (2) a curated fixture JSON as a guaranteed-good fallback if live analysis is flaky during the demo.
+
+---
+
+## Part 1 — Choosing / building the demo repo
+
+Pick (or fork and lightly modify) a real, moderately-sized open-source TypeScript/JavaScript repo with these properties, in priority order:
+
+1. **500–2,000 files** — big enough to look impressive on the graph, small enough to render smoothly and analyze in a few seconds live.
+2. **At least 2–3 genuine circular imports** — search for repos with known circular-dependency issues (older repos, or ones that haven't run `madge --circular` before), or intentionally introduce 2–3 clearly-named circular imports in a fork if none exist naturally (e.g. `services/auth.ts` ↔ `services/session.ts`).
+3. **A visible "legacy corner"** — one folder that's clearly older/messier than the rest (naming convention drift, higher complexity, an unused/legacy component) so the Debt layer has a natural, explainable cluster rather than scattered noise. If forking, rename one real unused file to something self-explanatory like `components/LegacyModal.tsx` so it reads clearly in the demo without narration.
+4. **A recognizable domain** — pick something judges will instantly understand the shape of (a small e-commerce app, a chat app, a dashboard) rather than an obscure library, so they can map the graph to a mental model immediately.
+5. Confirm the repo is public and has a permissive license (MIT/Apache) so you're not violating anything by demoing/forking it live.
+
+Good candidate search strategy: look for older, moderately popular (200–2,000 star) full-stack TS/React starter templates or sample apps on GitHub — these tend to have accumulated exactly the kind of organic complexity/circular imports/dead code you want, without being so large the live scan is slow.
+
+---
+
+## Part 2 — Fixture JSON (fallback / guaranteed-good demo data)
+
+Generate a fixture JSON file matching the frontend's expected data contract, hand-tuned so the resulting visualization looks intentional rather than random. Specifications for the fixture:
+
+### Repo metadata
+```json
+{
+  "repo": "acme/telemetry-console",
+  "filesScanned": 1284,
+  "dependencies": 4921,
+  "circularRefs": 3,
+  "scanDurationSeconds": 2.8
+}
+```
+Keep these numbers internally consistent with the node/edge data below — don't let the header stats disagree with what's actually rendered.
+
+### Nodes (modules)
+Generate ~40–60 visible top-level nodes (representing clustered folders, not literally every one of 1,284 files — cluster smaller files into their parent module for a clean graph) with this distribution, so every signal color is well-represented on screen at once:
+- **60% healthy** (`--signal-cold`, complexity 1–10)
+- **25% moderate** (`--signal-warm`, complexity 11–25)
+- **15% high-risk** (`--signal-hot`, complexity 26+, or flagged circular)
+
+Each node needs: `id`, `path`, `loc`, `complexity`, `inboundRefs`, `outboundRefs`, `isCircular` (bool), `cluster` (which visual group it belongs to, so the force layout can group related modules near each other instead of scattering randomly).
+
+### Edges
+Generate edges so that:
+- The 3 circular dependencies form **visually traceable loops** (2–4 nodes each), concentrated in one named area (e.g. `/services`) so the Diagnosis panel's readout ("Three circular dependencies concentrate in /services") is literally true of the visual, not just asserted in text.
+- One clear "hub" node exists with high inbound/outbound refs (this becomes the natural visual center of the force graph) — but do NOT hardcode its position or give it a special label the way `application core` currently does; let it earn its visual centrality from having the most connections, the same as every other node.
+
+### Debt layer findings (aim for ~15–20, not 27, so "view all" affordance feels honest rather than sparse)
+Each finding needs: `path`, `type` (`unused module` / `unused export` / `unreachable branch`), `severity` (0–100), `lastModified` (make a few of them genuinely old — 2+ years — so "legacy" reads as real, not arbitrary).
+
+### Diagnosis panel computed readout
+Write 1–2 sentences that are **directly derivable from the fixture numbers above** — e.g. if 3 circulars concentrate in `/services`, the readout should name that folder specifically. This is the detail that makes the whole thing feel computed rather than scripted.
+
+---
+
+## Part 3 — Demo script (for the video/live walkthrough)
+
+1. Open on the idle Scanner Console — let the "analysis engine online" status be visible for a beat.
+2. Paste the repo URL, hit Run Scan — let the Scan Bar sweep and real status lines print (`Parsing import graph…`, etc.) for the full 2–3 seconds; don't cut this short in the recording, it's doing narrative work.
+3. Hold on the Scan Bar → layer-toggle Flip transition — this is the signature moment, let it breathe, don't talk over it.
+4. Land on Structure layer first, let the score count up in the Diagnosis panel.
+5. Switch to Complexity layer — narrate the color shift as "same modules, different lens."
+6. Switch to Debt layer — point at one specific real finding (the legacy component) and read its severity aloud.
+7. Close on the Diagnosis panel's computed readout sentence — end the demo on the sentence, not on the graph, since that's the line judges will remember.
+
+Keep the whole walkthrough under 90 seconds — a diagnostic tool selling itself with a fast, confident scan is more convincing than a long tour.
