@@ -1,61 +1,52 @@
-**Add your own guidelines here**
-<!--
+# Software MRI — Engineering Guidelines
 
-System Guidelines
+## Code Style
 
-Use this file to provide the AI with rules and guidelines you want it to follow.
-This template outlines a few examples of things you can add. You can add your own sections and format it to suit your needs
+- TypeScript only — no `any` unless bridging untyped third-party APIs; use branded types for domain primitives
+- Default exports are forbidden; prefer named exports for tree-shaking and consistent imports
+- Colocate tests, types, and constants with the consuming module; extract only when shared across 3+ consumers
+- Keep functions small and pure; side effects go in hooks or event handlers, never in render
+- Use `useMemo` / `useCallback` only when profiling proves a bottleneck — premature memoization is technical debt
 
-TIP: More context isn't always better. It can confuse the LLM. Try and add the most important rules you need
+## Component Architecture
 
-# General guidelines
+- **Leaf components** (shadcn-style primitives in `ui/`): stateless, polymorphic via `asChild`/`Slot`, controlled styling via `className`
+- **Composite components** (e.g. `Graph3D`): single responsibility, props interface documented with JSDoc, ref forwarding via `forwardRef`
+- **Page-level components** (`App.tsx`): orchestrate state, wire data, delegate rendering to composites; never contain raw DOM layout
+- Avoid prop drilling beyond 2 levels — use composition (`children`) or context; never create a context for a single piece of state
 
-Any general rules you want the AI to follow.
-For example:
+## Styling Convention
 
-* Only use absolute positioning when necessary. Opt for responsive and well structured layouts that use flexbox and grid by default
-* Refactor code as you go to keep code clean
-* Keep file sizes small and put helper functions and components in their own files.
+- **Tailwind CSS 4** with the `@theme inline` token set defined in `theme.css` — prefer semantic tokens (`bg-muted`, `text-muted-foreground`, `border-border`) over raw hex values
+- Dark theme only — the palette is locked to `#0b0e11` (bg), `#12161b` (card), `#232933` (border), `#4fd1e8` (primary/accent), `#f2a65a` (warning), `#f0475c` (destructive)
+- Inline `style` is forbidden for layout; use Tailwind utilities for everything. Runtime-variable styles (e.g. dynamic width, color) use inline `style` only for data-driven values — never for spacing or positioning
+- Hover/active/focus transitions use Tailwind's `transition` + `duration-*` utilities; no custom keyframes unless animating complex SVG
 
---------------
+## Graph & Visualization Patterns
 
-# Design system guidelines
-Rules for how the AI should make generations look like your company's design system
+- `Graph3D` wraps `react-force-graph-3d` with a Fibonacci-sphere layout — never override `fx`/`fy`/`fz` after initial placement
+- Node coloring is driven by the `layer` prop via `colorForNode` callback; keep the color function pure and idempotent
+- Hover state is lifted to the parent (`App.tsx`) via `onHover`; the graph never owns selection state
+- Fullscreen is implemented via `createPortal` to `document.body` — the graph component receives a `fullscreen` boolean but does not manage it
 
-Additionally, if you select a design system to use in the prompt box, you can reference
-your design system's components, tokens, variables and components.
-For example:
+## State & Data Flow
 
-* Use a base font-size of 14px
-* Date formats should always be in the format “Jun 10”
-* The bottom toolbar should only ever have a maximum of 4 items
-* Never use the floating action button with the bottom toolbar
-* Chips should always come in sets of 3 or more
-* Don't use a dropdown if there are 2 or fewer options
+- Scan state machine: `ready → scanning → results | error` — transitions are monotonic; reset via explicit `setScan("ready")`
+- API polling uses `AbortController` for cancellation; the `abortRef.current?.abort()` path must always be reachable on unmount
+- The demo fixture (`software-mri-fixture.json`) auto-loads on first visit so the page is never empty — keep it in sync with the `ScanResult` type
+- Derived data (`enrichedNodes`, `graphLinks`, `debtByPath`, `risks`) is computed in `useMemo` and never duplicated in `useState`
 
-You can also create sub sections and add more specific details
-For example:
+## Backend (Express)
 
+- Route handlers are thin — business logic lives in `pipeline.ts`; `router.ts` only parses params and returns responses
+- Scan state is stored in-memory (`Map<scanId, ScanState>`); restarting the server loses in-flight scans — this is acceptable for the beta
+- Madge is run with `--tsconfig` and `--ext ts,tsx` for TypeScript projects; the pipeline falls back to JS if no tsconfig is found
+- `simple-git` clones are shallow (`--depth 1`) and cleaned up after analysis via `fs.rmSync` with error swallowing
 
-## Button
-The Button component is a fundamental interactive element in our design system, designed to trigger actions or navigate
-users through the application. It provides visual feedback and clear affordances to enhance user experience.
+## What Not To Do
 
-### Usage
-Buttons should be used for important actions that users need to take, such as form submissions, confirming choices,
-or initiating processes. They communicate interactivity and should have clear, action-oriented labels.
-
-### Variants
-* Primary Button
-  * Purpose : Used for the main action in a section or page
-  * Visual Style : Bold, filled with the primary brand color
-  * Usage : One primary button per section to guide users toward the most important action
-* Secondary Button
-  * Purpose : Used for alternative or supporting actions
-  * Visual Style : Outlined with the primary color, transparent background
-  * Usage : Can appear alongside a primary button for less important actions
-* Tertiary Button
-  * Purpose : Used for the least important actions
-  * Visual Style : Text-only with no border, using primary color
-  * Usage : For actions that should be available but not emphasized
--->
+- Do not add more CSS files — all styling is Tailwind utilities or `theme.css`
+- Do not add routing libraries — this is a single-page tool; feature toggles use `scan` state, not URL paths
+- Do not add a state management library — React state + `useMemo` is sufficient for this complexity class
+- Do not commit log files, `dist/`, `node_modules/`, or `.env` — see `.gitignore`
+- Do not add comments in components — the code should be self-documenting; use JSDoc on public interfaces only
