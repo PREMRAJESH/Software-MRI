@@ -1,9 +1,8 @@
 packages:
   - '.'
-allowBuilds:
-  '@tailwindcss/oxide': true
-  esbuild: true
-onlyBuiltDependencies: '@tailwindcss/oxide'
+onlyBuiltDependencies:
+  - '@tailwindcss/oxide'
+  - 'esbuild'
 supportedArchitectures:
   os:
     - linux
