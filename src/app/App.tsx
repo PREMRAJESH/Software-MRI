@@ -57,7 +57,7 @@ type ScanResult = {
   }>;
 };
 
-const SCAN_API = "/api";
+const SCAN_API = import.meta.env.VITE_API_URL ?? "/api";
 
 function SignalMark() {
   return <div className="relative flex size-8 items-center justify-center overflow-hidden rounded-[7px] border border-[#4fd1e8]/40 bg-[#101d23]" aria-hidden="true"><span className="h-px w-5 bg-[#4fd1e8] shadow-[0_0_9px_#4fd1e8]" /><span className="absolute h-5 w-px bg-[#f0475c]/70" /></div>;
@@ -158,8 +158,10 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen, selectedPath]);
 
-  const runScan = async () => {
-    const repoUrl = repo.startsWith("http") ? repo : `https://${repo}`;
+  const runScan = async (repoOverride?: string) => {
+    const input = repoOverride ?? repo;
+    setRepo(input);
+    const repoUrl = input.startsWith("http") ? input : `https://${input}`;
     if (!repoUrl.includes("github.com") || repoUrl.length < 20) {
       setErrorMessage("Enter a valid GitHub repository URL (e.g. https://github.com/org/repo).");
       setScan("error");
@@ -182,12 +184,25 @@ export default function App() {
         signal: abortRef.current.signal,
       });
 
+      const initPayload = await initResp.json().catch(() => ({}));
+
       if (!initResp.ok) {
-        const err = await initResp.json();
+        const err = initPayload as { error?: string };
         throw new Error(err.error || "Failed to start scan.");
       }
 
-      const { scanId } = await initResp.json();
+      if (initPayload.result) {
+        setScanResult(initPayload.result);
+        setStep(5);
+        setLogs((prev) => [...prev, "Analysis complete."]);
+        setTimeout(() => setScan("results"), 400);
+        return;
+      }
+
+      const { scanId } = initPayload;
+      if (!scanId) {
+        throw new Error("Scan API returned an invalid response.");
+      }
       scanIdRef.current = scanId;
 
       // Poll status until done

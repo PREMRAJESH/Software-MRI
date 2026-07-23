@@ -5,3 +5,6 @@ backend-server.log
 backend-server.err.log
 backend-server.out.log
 .vercel
+.pnpm-store/
+output/
+tmp/
